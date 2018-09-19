@@ -1,0 +1,40 @@
+import requests
+from requests.auth import HTTPBasicAuth
+import json
+import socket
+
+user = <%= @user %>
+password = <%= @pass %>
+hostname = <%= @hostname %>
+server = <%= @zabbix_server %>
+url = 'http://' + server + '/api_jsonrpc.php'
+headers = {'content-type': 'application/json'}
+
+
+def get_ip_address():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect((server, 10050))
+    return s.getsockname()[0]
+
+
+def request(payload):
+    response = requests.post(url, data=json.dumps(payload), headers=headers, auth=HTTPBasicAuth(user, password)).json()
+    return response['result']
+
+
+authentication = {'jsonrpc': '2.0', 'method': 'user.login',
+                  'params': {'user': user, 'password': password}, 'id': '1', "auth": None}
+auth = request(authentication)
+
+create_group = {"jsonrpc": "2.0", "method": "hostgroup.create", "params": {"name": "CustomHosts"}, "auth": auth, "id": 1}
+group_id = request(create_group)["groupids"][0]
+
+template = {"jsonrpc": "2.0", "method": "template.create", "params": {"host": "Custom template",
+            "groups": {"groupid": group_id}}, "auth": auth, "id": 1}
+template_id = request(template)["templateids"][0]
+
+ip = get_ip_address()
+host_create = {"jsonrpc": "2.0", "method": "host.create", "params": {"host": hostname,
+               "interfaces": [{"type": 1, "main": 1, "useip": 1, "ip": ip, "dns": "", "port": "10050"}],
+               "groups": [{"groupid": group_id}], "templates": [{"templateid": template_id}]}, "auth": auth, "id": 1}
+host = request(host_create)
